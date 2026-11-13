@@ -19,7 +19,7 @@ A terminal user interface (TUI) for monitoring and inspecting Docker containers,
 
 - **Interactive TUI:** Smooth keyboard navigation with Vim-style bindings (`j`/`k` or arrow keys).
 - **Modern Terminal Styling:** Styled layouts with dynamic color palettes via `lipgloss`.
-- **Modular Views:** Structured multi-panel architecture covering containers, images, system metrics, and real-time logs.
+- **Modular Views:** Structured multi-panel architecture covering interactive containers table, docker images inspector, and system resource metrics dashboard.
 - **Resource Efficient:** Single binary execution with zero runtime dependencies.
 
 ---
@@ -30,7 +30,8 @@ A terminal user interface (TUI) for monitoring and inspecting Docker containers,
 | :--- | :--- |
 | `up` / `k` | Move selection up |
 | `down` / `j` | Move selection down |
-| `enter` | Select item / Open detailed view |
+| `enter` | Select view from main menu |
+| `esc` / `b` | Return to main menu from any view |
 | `q` / `ctrl+c` | Quit application |
 
 ---
@@ -84,6 +85,9 @@ docktop/
 
 - [ ] Docker Engine SDK integration (`moby/moby/client`)
 - [ ] Container lifecycle management (start, stop, restart, kill)
+- [x] Interactive container table view with status and port bindings
+- [x] Docker image inspection table view with tag and size metrics
+- [x] System resource dashboard (CPU, memory, container count, disk overview)
 - [ ] Live resource usage streaming (CPU, RAM, Network I/O)
 - [ ] Container log inspection with search and auto-scroll
 - [ ] Multi-host Docker daemon connection support

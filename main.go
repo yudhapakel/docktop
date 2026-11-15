@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +17,7 @@ const (
 	viewContainers
 	viewImages
 	viewMetrics
+	viewVolumes
 )
 
 var (
@@ -50,18 +52,24 @@ var (
 	metricValStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#EE6FF8")).
 			Bold(true)
+
+	refreshStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#04B575")).
+			Bold(true)
 )
 
 type model struct {
-	state          sessionState
-	menuCursor     int
-	menuItems      []string
-	containerTable table.Model
-	imageTable     table.Model
+	state           sessionState
+	menuCursor      int
+	menuItems       []string
+	containerTable  table.Model
+	imageTable      table.Model
+	volumeTable     table.Model
+	lastRefresh     time.Time
 }
 
 func initialModel() model {
-	menu := []string{"Containers", "Images", "System Metrics", "Logs"}
+	menu := []string{"Containers", "Images", "Volumes", "System Metrics", "Logs"}
 
 	containerCols := []table.Column{
 		{Title: "ID", Width: 14},
@@ -123,11 +131,33 @@ func initialModel() model {
 	)
 	tImages.SetStyles(s)
 
+	volumeCols := []table.Column{
+		{Title: "NAME", Width: 30},
+		{Title: "DRIVER", Width: 12},
+		{Title: "MOUNTPOINT", Width: 40},
+	}
+
+	volumeRows := []table.Row{
+		{"mysql-data", "local", "/var/lib/docker/volumes/mysql-data/_data"},
+		{"redis-data", "local", "/var/lib/docker/volumes/redis-data/_data"},
+		{"web-uploads", "local", "/var/lib/docker/volumes/web-uploads/_data"},
+	}
+
+	tVolumes := table.New(
+		table.WithColumns(volumeCols),
+		table.WithRows(volumeRows),
+		table.WithFocused(true),
+		table.WithHeight(7),
+	)
+	tVolumes.SetStyles(s)
+
 	return model{
 		state:          viewMenu,
 		menuItems:      menu,
 		containerTable: tContainers,
 		imageTable:     tImages,
+		volumeTable:    tVolumes,
+		lastRefresh:    time.Now(),
 	}
 }
 
@@ -163,7 +193,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case 1:
 					m.state = viewImages
 				case 2:
+					m.state = viewVolumes
+				case 3:
 					m.state = viewMetrics
+					m.lastRefresh = time.Now()
 				}
 			}
 
@@ -172,6 +205,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "b":
 				m.state = viewMenu
 				return m, nil
+			case "r":
+				m.lastRefresh = time.Now()
 			}
 			m.containerTable, cmd = m.containerTable.Update(msg)
 			return m, cmd
@@ -181,8 +216,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "b":
 				m.state = viewMenu
 				return m, nil
+			case "r":
+				m.lastRefresh = time.Now()
 			}
 			m.imageTable, cmd = m.imageTable.Update(msg)
+			return m, cmd
+
+		case viewVolumes:
+			switch msg.String() {
+			case "esc", "b":
+				m.state = viewMenu
+				return m, nil
+			case "r":
+				m.lastRefresh = time.Now()
+			}
+			m.volumeTable, cmd = m.volumeTable.Update(msg)
 			return m, cmd
 
 		case viewMetrics:
@@ -190,6 +238,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "b":
 				m.state = viewMenu
 				return m, nil
+			case "r":
+				m.lastRefresh = time.Now()
 			}
 		}
 	}
@@ -198,17 +248,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	refreshInfo := refreshStyle.Render(fmt.Sprintf("Last refreshed: %s", m.lastRefresh.Format("15:04:05")))
+	refreshHint := subStyle.Render(" (Press 'r' to refresh)")
+
 	switch m.state {
 	case viewContainers:
 		header := titleStyle.Render("Docktop • Containers") + "\n\n"
 		tableView := baseStyle.Render(m.containerTable.View()) + "\n"
-		footer := subStyle.Render("\n(Press ↑/↓ or j/k to navigate • Esc/b to back • q to quit)\n")
+		footer := subStyle.Render("\n(Press ↑/↓ or j/k to navigate • 'r' to refresh • Esc/b to back • q to quit)\n")
 		return header + tableView + footer
 
 	case viewImages:
 		header := titleStyle.Render("Docktop • Images") + "\n\n"
 		tableView := baseStyle.Render(m.imageTable.View()) + "\n"
-		footer := subStyle.Render("\n(Press ↑/↓ or j/k to navigate • Esc/b to back • q to quit)\n")
+		footer := subStyle.Render("\n(Press ↑/↓ or j/k to navigate • 'r' to refresh • Esc/b to back • q to quit)\n")
+		return header + tableView + footer
+
+	case viewVolumes:
+		header := titleStyle.Render("Docktop • Volumes") + "\n\n"
+		tableView := baseStyle.Render(m.volumeTable.View()) + "\n"
+		footer := subStyle.Render("\n(Press ↑/↓ or j/k to navigate • 'r' to refresh • Esc/b to back • q to quit)\n")
 		return header + tableView + footer
 
 	case viewMetrics:
@@ -241,8 +300,9 @@ func (m model) View() string {
 		row1 := lipgloss.JoinHorizontal(lipgloss.Top, cpuCard, memCard)
 		row2 := lipgloss.JoinHorizontal(lipgloss.Top, containerCard, diskCard)
 
-		body := lipgloss.JoinVertical(lipgloss.Left, row1, "\n", row2) + "\n"
-		footer := subStyle.Render("\n(Press Esc/b to return to main menu • q to quit)\n")
+		body := lipgloss.JoinVertical(lipgloss.Left, row1, "\n", row2) + "\n\n"
+		body += refreshInfo + refreshHint + "\n"
+		footer := subStyle.Render("\n(Press 'r' to refresh • Esc/b to return to main menu • q to quit)\n")
 		return header + body + footer
 
 	default:
